@@ -7,11 +7,10 @@ let spaceball;                  // A SimpleRotator object that lets the user rot
 let inlet = []
 let range = []
 let reflection;
-
-
-function deg2rad(angle) {
-    return angle * Math.PI / 180;
-}
+let fromcamera;
+let reflectTexture;
+let twotriangles;
+let texture;
 
 function StereoCamera(
     Convergence,
@@ -74,6 +73,11 @@ function StereoCamera(
         m4.multiply(m4.translation(-0.01 * this.mEyeSeparation / 2, 0.0, 0.0), this.mModelViewMatrix, this.mModelViewMatrix);
     }
 }
+
+function deg2rad(angle) {
+    return angle * Math.PI / 180;
+}
+
 
 // Constructor
 function Model(name) {
@@ -155,17 +159,33 @@ function draw() {
     
     gl.uniform4fv(shProgram.iColor, [1, 1, 1, 1]);
     
-    let modelViewProjection = m4.multiply(projection, matAccum1);
+    let modelViewProjection = m4.identity()
+    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
+    gl.bindTexture(gl.TEXTURE_2D, reflectTexture);
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        fromcamera
+    );
+    twotriangles.Draw()
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    modelViewProjection = m4.multiply(projection, matAccum1 );
+
 
     reflection.ApplyLeftFrustum()
     modelViewProjection = m4.multiply(reflection.mProjectionMatrix, m4.multiply(reflection.mModelViewMatrix, matAccum1));
+
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
 
     /* Draw the six faces of a cube, with different colors. */
     
-    //gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
     gl.colorMask(true, false, false, false);
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 
     surface.Draw();
 
@@ -206,6 +226,7 @@ function CreateSurfaceData() {
 
     const uMin = -Math.PI;
     const uMax = Math.PI;
+    // Значення параметра v
     const vMin = -2;
     const vMax = 0;
 
@@ -245,8 +266,6 @@ function map(value, a, b, c, d) {
 }
 
 
-
-
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
     let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
@@ -265,6 +284,12 @@ function initGL() {
 
     surface = new Model('Surface');
     surface.BufferData(...CreateSurfaceData());
+
+    twotriangles = new Model('Two triangles');
+    twotriangles.BufferData(
+        [-1, -1, 0, 1, 1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1, 1, 0],
+        [1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0]
+    )
 
     gl.enable(gl.DEPTH_TEST);
 }
@@ -329,6 +354,10 @@ function init() {
     try {
         canvas = document.getElementById("webglcanvas");
         gl = canvas.getContext("webgl");
+
+        fromcamera = readCamera()
+        reflectTexture = CreateCameraTexture()
+
         if ( ! gl ) {
             throw "Browser does not support WebGL";
         }
@@ -349,7 +378,7 @@ function init() {
 
     spaceball = new TrackballRotator(canvas, draw, 0);
     
-    let texture = gl.createTexture();
+    texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
