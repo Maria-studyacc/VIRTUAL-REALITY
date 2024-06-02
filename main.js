@@ -11,6 +11,53 @@ let fromcamera;
 let reflectTexture;
 let twotriangles;
 let texture;
+let sphere;
+let song;
+let songsource;
+let filterNow;
+let shelffilter;
+let panoram;
+let context;
+
+function initAudio() {
+    filterNow = document.getElementById('filterState');
+    song = document.getElementById('audioContext');
+
+    song.addEventListener('play', () => {
+        if (!context) {
+            context = new (window.AudioContext || window.webkitAudioContext)();
+            songsource = context.createMediaElementSource(song);
+            shelffilter = context.createBiquadFilter();
+            panoram = context.createPanner();
+
+            songsource.connect(panoram);
+            panoram.connect(shelffilter);
+            shelffilter.connect(context.destination);
+
+            // shelffilter.frequency.value = 350;
+
+            shelffilter.type = 'lowshelf';
+            shelffilter.frequency.value = 1100;
+            shelffilter.gain.value = 15;
+
+            context.resume();
+        }
+    })
+    song.addEventListener('pause', () => {
+        context.resume();
+    })
+    filterNow.addEventListener('change', function () {
+        if (filterNow.checked) {
+            panoram.disconnect();
+            panoram.connect(shelffilter);
+            shelffilter.connect(context.destination);
+        } else {
+            panoram.disconnect();
+            panoram.connect(context.destination);
+        }
+    });
+    song.play();
+}
 
 function StereoCamera(
     Convergence,
@@ -180,16 +227,29 @@ function draw() {
 
 
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
+    
 
     /* Draw the six faces of a cube, with different colors. */
     
     gl.colorMask(true, false, false, false);
-
     gl.bindTexture(gl.TEXTURE_2D, texture);
-
     surface.Draw();
-
     gl.clear(gl.DEPTH_BUFFER_BIT);
+
+
+    
+    gl.colorMask(true, true, true, true);
+    const timeframe = Date.now() / 1000;
+    if (panoram) {
+        panoram.setPosition(Math.sin(timeframe) / 2, Math.sin(timeframe) / 2, 1);
+    }
+    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, m4.multiply(m4.identity(),
+        m4.multiply(m4.translation(Math.sin(timeframe) / 2, Math.cos(timeframe) / 2, 1), m4.scaling(0.5, 0.5, 1))));
+    sphere.Draw();
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+
+
+    gl.colorMask(true, false, false, false);
 
 
     reflection.ApplyRightFrustum()
@@ -198,6 +258,8 @@ function draw() {
     gl.colorMask(false, true, true, false);
     surface.Draw();
     gl.colorMask(true, true, true, true);
+
+    
 }
 
 function generatePoint(u, v, a, b) {
@@ -265,6 +327,37 @@ function map(value, a, b, c, d) {
     return c + value * (d - c);
 }
 
+function CreateSurfaceForSphere() {
+    let radius = 0.1;
+    let vertexList = [];
+    let lon = -Math.PI;
+    let lat = -Math.PI * 0.5;
+    while (lon < Math.PI) {
+        while (lat < Math.PI * 0.5) {
+            let v1 = surfaceForSphere(radius, lon, lat);
+            let v2 = surfaceForSphere(radius, lon + 0.5, lat);
+            let v3 = surfaceForSphere(radius, lon, lat + 0.5);
+            let v4 = surfaceForSphere(radius, lon + 0.5, lat + 0.5);
+            vertexList.push(v1.x, v1.y, v1.z);
+            vertexList.push(v2.x, v2.y, v2.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            vertexList.push(v2.x, v2.y, v2.z);
+            vertexList.push(v4.x, v4.y, v4.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            lat += 0.5;
+        }
+        lat = -Math.PI * 0.5
+        lon += 0.5;
+    }
+    return vertexList;
+}
+
+function surfaceForSphere(r, u, v) {
+    let x = r * Math.sin(u) * Math.cos(v);
+    let y = r * Math.sin(u) * Math.sin(v);
+    let z = r * Math.cos(u);
+    return { x: x, y: y, z: z };
+}
 
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
@@ -290,6 +383,9 @@ function initGL() {
         [-1, -1, 0, 1, 1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1, 1, 0],
         [1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0]
     )
+
+    sphere = new Model('Surface2');
+    sphere.BufferData(CreateSurfaceForSphere(), new Array(CreateSurfaceForSphere().length).fill(0))
 
     gl.enable(gl.DEPTH_TEST);
 }
